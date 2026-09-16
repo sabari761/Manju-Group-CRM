@@ -1,70 +1,231 @@
-# Getting Started with Create React App
+# Real Estate CRM — Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Enterprise-grade Real Estate CRM client application built with React, Bootstrap 5, and modern RESTful architecture. Designed for managing lead lifecycles, real estate inventory (projects, buildings, units), customer bookings, and employee assignments with role-based access control.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Architecture](#project-architecture)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [Available Scripts](#available-scripts)
+- [API Integration](#api-integration)
+- [Production Deployment](#production-deployment)
+
+---
+
+## Features
+
+### 1. Authentication & Role-Based Access Control (RBAC)
+- Secure JWT-based authentication with automatic bearer header injection.
+- Role-based routing: **Admin** and **Sales Employee** access levels.
+- Automatic session invalidation and redirection on `401 Unauthorized`.
+
+### 2. Dashboard & Analytics
+- Overview metrics: Total Leads, New Inquiries, Interested Prospects, Scheduled Follow-ups, and Total Bookings.
+- Interactive lead stage pipeline breakdown with visual conversion bars.
+- Quick-access tables for upcoming follow-ups and recent bookings.
+
+### 3. Lead Lifecycle Management
+- Full CRUD workflow for lead records with real-time status transitions.
+- Multi-criteria filtering: Search by name/phone/email, filter by stage, and filter by assigned employee.
+- Comprehensive lead details view: Note logs, follow-up scheduling, stage progression, and ownership assignment.
+
+### 4. Property & Inventory Management
+- Hierarchical inventory structure: **Project** &rarr; **Building** &rarr; **Unit**.
+- Project catalog with real-time text search.
+- Tabbed building views with unit-level status badges (`Available`, `Booked`), pricing formatted in INR (`₹`), and specifications.
+
+### 5. Booking Workflow
+- Dynamic cascading booking wizard: Lead selection &rarr; Project &rarr; Building &rarr; Unit.
+- Real-time unit preview card displaying pricing and specifications.
+- Pre-confirmation modal to prevent accidental submissions.
+- Search and pagination support (`?page=1&limit=10&search=...`) with URL synchronization.
+- HTTP 409 conflict handling for preventing duplicate bookings on reserved units.
+
+### 6. Employee Management (Admin Only)
+- Team directory with role badges (`Admin`, `Sales Employee`) and active status.
+- Add and manage employee profiles with secure assignment options.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Core** | React 19, JavaScript (ES6+) |
+| **Routing** | React Router DOM v7 |
+| **UI & Layout** | Bootstrap 5, Custom CSS Variables |
+| **Styling Utilities** | Tailwind CSS (prefixed, utility-only) |
+| **Form Management** | React Hook Form |
+| **HTTP Client** | Axios (centralized interceptors) |
+| **Notifications** | React Toastify |
+| **Icons** | Custom SVG Icons |
+
+---
+
+## Project Architecture
+
+```
+frontend/taskui/
+├── public/                 # Static assets, branding, and index.html
+├── src/
+│   ├── assets/             # Brand logos and vector graphics
+│   ├── components/         # Modular UI components
+│   │   ├── bookings/       # BookingTable, BookingForm, BookingConfirmModal
+│   │   ├── common/         # PageHeader, SearchInput, Pagination, LoadingSpinner, EmptyState
+│   │   ├── layout/         # AppLayout, Sidebar, Header
+│   │   ├── leads/          # LeadTable, LeadForm, LeadFilters, LeadNotes
+│   │   └── properties/     # ProjectCard, BuildingList, UnitTable
+│   ├── context/            # Global React Context (AuthContext)
+│   ├── pages/              # Route view components
+│   │   ├── auth/           # Login
+│   │   ├── bookings/       # Bookings list & creation
+│   │   ├── dashboard/      # Metrics & pipeline dashboard
+│   │   ├── employees/      # Employee directory
+│   │   ├── leads/          # Leads list & lead details
+│   │   └── properties/     # Property catalog & building view
+│   ├── routes/             # AppRoutes, ProtectedRoute, AdminRoute
+│   ├── services/           # Axios API service layer (auth, leads, bookings, etc.)
+│   ├── utils/              # Formatters (currency, dates) and helpers
+│   ├── App.js              # Application entry and layout wrapper
+│   └── index.js            # React DOM mounting
+├── .env                    # Environment configuration
+└── package.json            # Dependencies and scripts
+```
+
+---
+
+## Prerequisites
+
+- **Node.js**: `v18.0.0` or higher
+- **npm**: `v9.0.0` or higher (or `yarn` / `pnpm`)
+- **Backend API**: Running instance of the CRM backend service
+
+---
+
+## Getting Started
+
+### 1. Clone & Navigate
+
+```bash
+git clone <repository-url>
+cd frontend/taskui
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure Environment
+
+Create or update `.env` in the root directory:
+
+```env
+REACT_APP_API_BASE_URL=https://manju-group-crm-backend.onrender.com/api
+REACT_APP_NAME="Real Estate CRM"
+REACT_APP_VERSION=1.0.0
+```
+
+### 4. Start Development Server
+
+```bash
+npm start
+```
+
+The application will be accessible at [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Environment Variables
+
+| Variable | Description | Default / Example |
+|---|---|---|
+| `REACT_APP_API_BASE_URL` | Base URL of the backend REST API | `https://manju-group-crm-backend.onrender.com/api` |
+| `REACT_APP_NAME` | Application display name | `Real Estate CRM` |
+| `REACT_APP_VERSION` | Current application release version | `1.0.0` |
+
+---
 
 ## Available Scripts
 
-In the project directory, you can run:
+| Command | Description |
+|---|---|
+| `npm start` | Runs the app in development mode with hot reloading. |
+| `npm run build` | Compiles and optimizes production assets into the `build/` folder. |
+| `npm test` | Launches the test runner in interactive watch mode. |
+| `npm run eject` | Ejects Create React App configuration (one-way operation). |
 
-### `npm start`
+---
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## API Integration
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+The frontend communicates with the backend via the following REST endpoints:
 
-### `npm test`
+| Domain | Method | Endpoint | Description |
+|---|---|---|---|
+| **Auth** | `POST` | `/api/auth/login` | Authenticate user and return JWT |
+| | `POST` | `/api/auth/logout` | Revoke session |
+| **Dashboard** | `GET` | `/api/dashboard` | Fetch summary metrics and pipeline stats |
+| **Leads** | `GET` | `/api/leads?page=1&limit=10&search=&stage=&assignedTo=` | Paginated lead list with filters |
+| | `POST` | `/api/leads` | Create new lead record |
+| | `GET` | `/api/leads/:id` | Fetch lead details and history |
+| | `PUT` | `/api/leads/:id` | Update lead record |
+| | `DELETE` | `/api/leads/:id` | Delete lead |
+| | `POST` | `/api/leads/:id/notes` | Add progress note to lead |
+| **Properties** | `GET` | `/api/properties/projects?page=1&limit=10&search=` | List projects with search |
+| | `GET` | `/api/properties/projects/:id` | Project details |
+| | `GET` | `/api/properties/projects/:id/buildings` | Buildings under a project |
+| | `GET` | `/api/properties/buildings/:id/units` | Units under a building |
+| **Bookings** | `GET` | `/api/bookings?page=1&limit=10&search=` | Paginated bookings with search |
+| | `POST` | `/api/bookings` | Create new booking (`{ leadId, unitId, bookingDate }`) |
+| | `GET` | `/api/bookings/:id` | Single booking detail |
+| **Employees** | `GET` | `/api/employees?page=1&limit=10&search=` | List employee directory |
+| | `POST` | `/api/employees` | Create new employee profile |
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+---
 
-### `npm run build`
+## Production Deployment
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Building the Application
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Generate the production bundle:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+npm run build
+```
 
-### `npm run eject`
+This generates minified, optimized static HTML, CSS, and JS bundles in the `build/` directory.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Serving with Nginx
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Example Nginx virtual host configuration (`nginx.conf`):
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```nginx
+server {
+    listen 80;
+    server_name crm.example.com;
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+    root /var/www/taskui/build;
+    index index.html;
 
-## Learn More
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+    location /api/ {
+        proxy_pass http://localhost:5000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
