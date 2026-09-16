@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { toast } from 'react-toastify';
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from '../../hooks/useLeads';
 import { useEmployees } from '../../hooks/useEmployees';
 import { getLeadById } from '../../services/leadService';

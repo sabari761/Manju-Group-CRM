@@ -46,7 +46,8 @@ export default function Dashboard() {
     isLoading: loadingBookings,
   } = useRecentBookings(dashboardData);
 
-  const loading = loadingDashboard || loadingFollowUps || loadingBookings;
+  // Combined loading state (available for future use)
+  // const loading = loadingDashboard || loadingFollowUps || loadingBookings;
 
   if (loadingDashboard) return <LoadingSpinner text="Loading dashboard..." />;
   if (errorDashboard) return <ErrorState message="Unable to load dashboard data." onRetry={refetchDashboard} />;
