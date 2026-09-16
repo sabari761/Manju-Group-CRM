@@ -59,6 +59,7 @@ Enterprise-grade Real Estate CRM client application built with React, Bootstrap 
 |---|---|
 | **Core** | React 19, JavaScript (ES6+) |
 | **Routing** | React Router DOM v7 |
+| **Server State / Caching** | TanStack React Query v5 |
 | **UI & Layout** | Bootstrap 5, Custom CSS Variables |
 | **Styling Utilities** | Tailwind CSS (prefixed, utility-only) |
 | **Form Management** | React Hook Form |
@@ -82,6 +83,15 @@ frontend/taskui/
 │   │   ├── leads/          # LeadTable, LeadForm, LeadFilters, LeadNotes
 │   │   └── properties/     # ProjectCard, BuildingList, UnitTable
 │   ├── context/            # Global React Context (AuthContext)
+│   ├── hooks/              # TanStack React Query custom hooks
+│   │   ├── queryKeys.js    # Centralized query key factory
+│   │   ├── useDashboard.js # Dashboard summary, follow-ups, recent bookings
+│   │   ├── useLeads.js     # useLeads, useLeadById, CRUD mutations
+│   │   ├── useEmployees.js # useEmployees, CRUD mutations
+│   │   ├── useProperties.js# useProjects, useProject, CRUD mutations
+│   │   ├── useBuildings.js # useBuildings, CRUD mutations
+│   │   ├── useUnits.js     # useUnits, CRUD mutations
+│   │   └── useBookings.js  # useBookings, useCreateBooking
 │   ├── pages/              # Route view components
 │   │   ├── auth/           # Login
 │   │   ├── bookings/       # Bookings list & creation
@@ -188,6 +198,48 @@ The frontend communicates with the backend via the following REST endpoints:
 | | `GET` | `/api/bookings/:id` | Single booking detail |
 | **Employees** | `GET` | `/api/employees?page=1&limit=10&search=` | List employee directory |
 | | `POST` | `/api/employees` | Create new employee profile |
+
+---
+
+## State Management & Data Fetching (TanStack React Query)
+
+All server-side data fetching is handled via **TanStack React Query v5**. This provides automatic caching, background re-synchronization, and clean mutation invalidation without navigation-triggered loading flickers.
+
+### QueryClient Configuration (`App.js`)
+
+```js
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // No reload when switching browser tabs
+      staleTime: 30_000,           // Cache is fresh for 30 seconds
+      retry: 1,                    // Retry failed requests once
+    },
+  },
+});
+```
+
+### Custom Hooks (`src/hooks/`)
+
+| Hook File | Exported Hooks |
+|---|---|
+| `queryKeys.js` | Centralized key factory — ensures consistent cache invalidation |
+| `useDashboard.js` | `useDashboard`, `useFollowUpLeads`, `useRecentBookings` |
+| `useLeads.js` | `useLeads`, `useLeadById`, `useCreateLead`, `useUpdateLead`, `useDeleteLead` |
+| `useEmployees.js` | `useEmployees`, `useCreateEmployee`, `useUpdateEmployee`, `useDeleteEmployee` |
+| `useProperties.js` | `useProjects`, `useProject`, `useCreateProject`, `useUpdateProject`, `useDeleteProject` |
+| `useBuildings.js` | `useBuildings`, `useCreateBuilding`, `useUpdateBuilding`, `useDeleteBuilding` |
+| `useUnits.js` | `useUnits`, `useCreateUnit`, `useUpdateUnit`, `useDeleteUnit` |
+| `useBookings.js` | `useBookings`, `useCreateBooking` |
+
+### Cache Invalidation Pattern
+
+Every mutation hook calls `queryClient.invalidateQueries(...)` on success, triggering a background refetch of only the affected list or detail. **Navigation between pages does NOT trigger loading states** if the data is still within `staleTime`.
+
+```js
+// Example: after creating a lead
+queryClient.invalidateQueries({ queryKey: queryKeys.leads.lists() });
+```
 
 ---
 

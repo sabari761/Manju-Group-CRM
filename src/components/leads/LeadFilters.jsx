@@ -4,12 +4,12 @@ import { STAGES } from './LeadStageBadge';
 export default function LeadFilters({ stage, onStageChange, employees: employeesProp, assignedTo, onAssignedToChange }) {
   const employees = Array.isArray(employeesProp) ? employeesProp : [];
   return (
-    <div className="d-flex gap-2 flex-wrap">
+    <div className="d-flex gap-2 flex-wrap flex-grow-1 flex-sm-grow-0">
       {/* Stage filter */}
       <select
         id="filter-stage"
-        className="form-select form-select-sm"
-        style={{ width: 'auto', minWidth: 140, borderColor: 'var(--clr-border)' }}
+        className="form-select form-select-sm flex-grow-1 flex-sm-grow-0"
+        style={{ width: 'auto', minWidth: 130, borderColor: 'var(--clr-border)' }}
         value={stage}
         onChange={(e) => onStageChange(e.target.value)}
         aria-label="Filter by stage"
@@ -24,8 +24,8 @@ export default function LeadFilters({ stage, onStageChange, employees: employees
       {employees && employees.length > 0 && (
         <select
           id="filter-employee"
-          className="form-select form-select-sm"
-          style={{ width: 'auto', minWidth: 160, borderColor: 'var(--clr-border)' }}
+          className="form-select form-select-sm flex-grow-1 flex-sm-grow-0"
+          style={{ width: 'auto', minWidth: 150, borderColor: 'var(--clr-border)' }}
           value={assignedTo}
           onChange={(e) => onAssignedToChange(e.target.value)}
           aria-label="Filter by employee"

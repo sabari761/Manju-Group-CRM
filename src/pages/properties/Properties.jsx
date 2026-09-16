@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { toast } from 'react-toastify';
 import {
-  getProjects,
-  createProject,
-  updateProject,
-  deleteProject,
-} from '../../services/propertyService';
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+} from '../../hooks/useProperties';
 import ProjectCard from '../../components/properties/ProjectCard';
 import PageHeader from '../../components/common/PageHeader';
 import SearchInput from '../../components/common/SearchInput';
@@ -16,10 +15,11 @@ import EmptyState from '../../components/common/EmptyState';
 import Pagination from '../../components/common/Pagination';
 import ConfirmModal from '../../components/common/ConfirmModal';
 
+const LIMIT = 10;
+
 // ─── Add / Edit Project Modal ─────────────────────────────────────────────────
 function ProjectModal({ show, project, onClose, onSuccess }) {
   const isEdit = Boolean(project);
-  const [submitting, setSubmitting] = useState(false);
 
   const {
     control,
@@ -30,8 +30,12 @@ function ProjectModal({ show, project, onClose, onSuccess }) {
     defaultValues: { name: '', location: '', description: '' },
   });
 
-  // Populate row data into form when editing, or clear when adding
-  useEffect(() => {
+  const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
+  const submitting = createProject.isPending || updateProject.isPending;
+
+  // Populate form when project changes or modal opens
+  React.useEffect(() => {
     if (project) {
       reset({
         name: project?.name || '',
@@ -39,34 +43,31 @@ function ProjectModal({ show, project, onClose, onSuccess }) {
         description: project?.description || '',
       });
     } else {
-      reset({
-        name: '',
-        location: '',
-        description: '',
-      });
+      reset({ name: '', location: '', description: '' });
     }
   }, [project, reset, show]);
 
-  const onSubmit = async (data) => {
-    setSubmitting(true);
-    try {
-      if (isEdit) {
-        const id = project?._id || project?.id;
-        await updateProject(id, data);
-        toast.success('Project updated successfully.');
-      } else {
-        await createProject(data);
-        toast.success('Project created successfully.');
-      }
-      reset();
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || `Failed to ${isEdit ? 'update' : 'create'} project.`
+  const onSubmit = (data) => {
+    if (isEdit) {
+      const id = project?._id || project?.id;
+      updateProject.mutate(
+        { id, data },
+        {
+          onSuccess: () => {
+            reset();
+            onSuccess();
+            onClose();
+          },
+        }
       );
-    } finally {
-      setSubmitting(false);
+    } else {
+      createProject.mutate(data, {
+        onSuccess: () => {
+          reset();
+          onSuccess();
+          onClose();
+        },
+      });
     }
   };
 
@@ -203,82 +204,47 @@ function ProjectModal({ show, project, onClose, onSuccess }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Properties() {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage]     = useState(1);
 
   // Add / Edit Modal
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal]           = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
 
   // Delete Modal
   const [deleteProject_, setDeleteProject] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Search & pagination
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const LIMIT = 10;
+  // ── Queries ───────────────────────────────────────────────────────────────────
+  const filters = {
+    page,
+    limit: LIMIT,
+    ...(search?.trim() && { search: search.trim() }),
+  };
 
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page, limit: LIMIT };
-      if (search?.trim()) {
-        params.search = search.trim();
-      }
-      const res = await getProjects(params);
-      // Response: { success, data: [], total, page, limit, totalPages }
-      const raw = res.data?.data ?? res.data?.projects ?? res.data;
-      const list = Array.isArray(raw) ? raw : [];
-      setProjects(list);
-      setTotal(res.data?.total ?? list.length ?? 0);
-      setTotalPages(
-        res.data?.totalPages ?? Math.max(Math.ceil((res.data?.total ?? list.length) / LIMIT), 1)
-      );
-    } catch {
-      setError('Unable to load projects.');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
+  const { data, isLoading, isError, refetch } = useProjects(filters);
 
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+  const projects   = data?.projects   ?? [];
+  const total      = data?.total      ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+  const deleteProject = useDeleteProject();
+  const deleteLoading = deleteProject.isPending;
 
   const handleSearch = (val) => {
     setSearch(val);
     setPage(1);
   };
 
-  const handleAddClick = () => {
-    setSelectedProject(null);
-    setShowModal(true);
-  };
+  const handleAddClick  = () => { setSelectedProject(null); setShowModal(true); };
+  const handleEditClick = (project) => { setSelectedProject(project); setShowModal(true); };
 
-  const handleEditClick = (project) => {
-    setSelectedProject(project);
-    setShowModal(true);
-  };
-
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!deleteProject_) return;
-    setDeleteLoading(true);
-    try {
-      const id = deleteProject_?._id || deleteProject_?.id;
-      await deleteProject(id);
-      toast.success('Project deleted successfully.');
-      setDeleteProject(null);
-      fetchProjects();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to delete project.');
-    } finally {
-      setDeleteLoading(false);
-    }
+    const id = deleteProject_?._id || deleteProject_?.id;
+    deleteProject.mutate(id, {
+      onSuccess: () => setDeleteProject(null),
+    });
   };
 
   return (
@@ -293,7 +259,7 @@ export default function Properties() {
         </button>
       </PageHeader>
 
-      {/* Search by name, location, description */}
+      {/* Search */}
       <div className="mb-3">
         <SearchInput
           id="projects-search"
@@ -304,10 +270,10 @@ export default function Properties() {
         />
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <LoadingSpinner text="Loading properties..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={fetchProjects} />
+      ) : isError ? (
+        <ErrorState message="Unable to load projects." onRetry={refetch} />
       ) : projects?.length === 0 ? (
         <EmptyState
           title="No projects found."
@@ -321,7 +287,7 @@ export default function Properties() {
         <>
           <div className="row g-3">
             {projects?.map((project) => (
-              <div className="col-md-6 col-lg-4" key={project?._id || project?.id}>
+              <div className="col-12 col-sm-6 col-lg-4" key={project?._id || project?.id}>
                 <ProjectCard
                   project={project}
                   onEdit={handleEditClick}
@@ -344,13 +310,8 @@ export default function Properties() {
       <ProjectModal
         show={showModal}
         project={selectedProject}
-        onClose={() => {
-          setShowModal(false);
-          setSelectedProject(null);
-        }}
-        onSuccess={() => {
-          fetchProjects();
-        }}
+        onClose={() => { setShowModal(false); setSelectedProject(null); }}
+        onSuccess={() => {}}
       />
 
       {/* Delete Confirmation Modal */}

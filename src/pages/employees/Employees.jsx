@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { toast } from 'react-toastify';
 import {
-  getEmployees,
-  createEmployee,
-  updateEmployee,
-  deleteEmployee,
-} from '../../services/employeeService';
+  useEmployees,
+  useCreateEmployee,
+  useUpdateEmployee,
+  useDeleteEmployee,
+} from '../../hooks/useEmployees';
 import PageHeader from '../../components/common/PageHeader';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorState from '../../components/common/ErrorState';
@@ -34,10 +33,14 @@ const roleBadgeStyle = (role) => {
   }
 };
 
+const LIMIT = 10;
+
 // ─── Add / Edit Employee Modal ────────────────────────────────────────────────
-function EmployeeModal({ show, employee, onClose, onSuccess }) {
+function EmployeeModal({ show, employee, onClose }) {
   const isEdit = Boolean(employee);
-  const [submitting, setSubmitting] = useState(false);
+  const createEmployee = useCreateEmployee();
+  const updateEmployee = useUpdateEmployee();
+  const submitting = createEmployee.isPending || updateEmployee.isPending;
 
   const {
     control,
@@ -54,8 +57,8 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
     },
   });
 
-  // Populate row data into form when editing, or clear when adding
-  useEffect(() => {
+  // Populate form when employee changes or modal opens
+  React.useEffect(() => {
     if (employee) {
       reset({
         name: employee.name || '',
@@ -65,40 +68,19 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
         role: employee.role || 'SALES_EMPLOYEE',
       });
     } else {
-      reset({
-        name: '',
-        mobileNumber: '',
-        email: '',
-        password: '',
-        role: 'SALES_EMPLOYEE',
-      });
+      reset({ name: '', mobileNumber: '', email: '', password: '', role: 'SALES_EMPLOYEE' });
     }
   }, [employee, reset, show]);
 
-  const onSubmit = async (data) => {
-    setSubmitting(true);
-    try {
-      const payload = { ...data };
-      // When editing, do not send empty password if untouched
-      if (isEdit && !payload.password?.trim()) {
-        delete payload.password;
-      }
+  const onSubmit = (data) => {
+    const payload = { ...data };
+    if (isEdit && !payload.password?.trim()) delete payload.password;
 
-      if (isEdit) {
-        const id = employee._id || employee.id;
-        await updateEmployee(id, payload);
-        toast.success('Employee updated successfully.');
-      } else {
-        await createEmployee(payload);
-        toast.success('Employee added successfully.');
-      }
-      reset();
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.message || `Failed to ${isEdit ? 'update' : 'add'} employee.`);
-    } finally {
-      setSubmitting(false);
+    if (isEdit) {
+      const id = employee._id || employee.id;
+      updateEmployee.mutate({ id, data: payload }, { onSuccess: () => { reset(); onClose(); } });
+    } else {
+      createEmployee.mutate(payload, { onSuccess: () => { reset(); onClose(); } });
     }
   };
 
@@ -106,11 +88,7 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
 
   return (
     <>
-      <div
-        className="modal-backdrop fade show"
-        onClick={onClose}
-        style={{ zIndex: 1040 }}
-      />
+      <div className="modal-backdrop fade show" onClick={onClose} style={{ zIndex: 1040 }} />
       <div
         className="modal fade show d-block"
         tabIndex="-1"
@@ -130,12 +108,7 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
               >
                 {isEdit ? 'Edit Employee' : 'Add Employee'}
               </h5>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={onClose}
-                aria-label="Close"
-              />
+              <button type="button" className="btn-close" onClick={onClose} aria-label="Close" />
             </div>
 
             {/* Body */}
@@ -241,7 +214,12 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
                   {/* Password */}
                   <div className="col-12">
                     <label htmlFor="emp-password" className="form-label">
-                      Password {isEdit ? <span className="text-muted fw-normal">(Leave blank to keep unchanged)</span> : <span className="text-danger">*</span>}
+                      Password{' '}
+                      {isEdit ? (
+                        <span className="text-muted fw-normal">(Leave blank to keep unchanged)</span>
+                      ) : (
+                        <span className="text-danger">*</span>
+                      )}
                     </label>
                     <Controller
                       name="password"
@@ -300,82 +278,46 @@ function EmployeeModal({ show, employee, onClose, onSuccess }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Employees() {
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Search & pagination
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const LIMIT = 10;
+  const [page, setPage]     = useState(1);
 
   // Add / Edit Modal
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal]             = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   // Delete Modal
   const [deleteEmp, setDeleteEmp] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const fetchEmployees = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page, limit: LIMIT };
-      if (search.trim()) params.search = search.trim();
-      const res = await getEmployees(params);
-      // Response: { success, data: [...], total, page, limit, totalPages }
-      const raw = res.data?.data ?? res.data?.employees ?? res.data;
-      setEmployees(Array.isArray(raw) ? raw : []);
-      setTotal(res.data?.total ?? 0);
-    } catch {
-      setError('Unable to load employees.');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
-
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
-
-  // Open Add Modal
-  const handleAddClick = () => {
-    setSelectedEmployee(null);
-    setShowModal(true);
+  // ── Queries ───────────────────────────────────────────────────────────────────
+  const filters = {
+    page,
+    limit: LIMIT,
+    ...(search.trim() && { search: search.trim() }),
   };
 
-  // Open Edit Modal with row data passed
-  const handleEditClick = (emp) => {
-    setSelectedEmployee(emp);
-    setShowModal(true);
-  };
+  const { data, isLoading, isError, refetch } = useEmployees(filters);
 
-  // Confirm and execute DELETE /api/users/:id
-  const handleDeleteConfirm = async () => {
+  const employees  = data?.employees ?? [];
+  const total      = data?.total     ?? 0;
+  const totalPages = Math.ceil(total / LIMIT) || 1;
+
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+  const deleteEmployee = useDeleteEmployee();
+  const deleteLoading  = deleteEmployee.isPending;
+
+  const handleAddClick  = () => { setSelectedEmployee(null); setShowModal(true); };
+  const handleEditClick = (emp) => { setSelectedEmployee(emp); setShowModal(true); };
+
+  const handleDeleteConfirm = () => {
     if (!deleteEmp) return;
-    setDeleteLoading(true);
-    try {
-      const id = deleteEmp._id || deleteEmp.id;
-      await deleteEmployee(id);
-      toast.success('Employee deleted successfully.');
-      setDeleteEmp(null);
-      fetchEmployees();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete employee.');
-    } finally {
-      setDeleteLoading(false);
-    }
+    const id = deleteEmp._id || deleteEmp.id;
+    deleteEmployee.mutate(id, { onSuccess: () => setDeleteEmp(null) });
   };
 
-  // Reset to page 1 when search changes
   const handleSearch = (e) => {
     setSearch(e.target.value);
     setPage(1);
   };
-
-  const totalPages = Math.ceil(total / LIMIT);
 
   return (
     <div>
@@ -394,7 +336,7 @@ export default function Employees() {
         <input
           id="employees-search"
           type="text"
-          className="form-control"
+          className="form-control w-100"
           style={{ maxWidth: 320, borderColor: 'var(--clr-border)' }}
           placeholder="Search by name, email..."
           value={search}
@@ -403,10 +345,10 @@ export default function Employees() {
       </div>
 
       {/* Content */}
-      {loading ? (
+      {isLoading ? (
         <LoadingSpinner text="Loading employees..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={fetchEmployees} />
+      ) : isError ? (
+        <ErrorState message="Unable to load employees." onRetry={refetch} />
       ) : employees.length === 0 ? (
         <EmptyState
           title="No employees found."
@@ -435,17 +377,13 @@ export default function Employees() {
                     <td style={{ color: 'var(--clr-muted)', fontSize: '0.82rem' }}>
                       {(page - 1) * LIMIT + idx + 1}
                     </td>
-                    <td className="fw-medium">{emp?.name || '—'}</td>
-                    <td>{emp?.mobileNumber || '—'}</td>
+                    <td className="fw-medium text-nowrap">{emp?.name || '—'}</td>
+                    <td className="text-nowrap">{emp?.mobileNumber || '—'}</td>
                     <td>{emp?.email || '—'}</td>
                     <td>
                       <span
                         className="badge"
-                        style={{
-                          ...roleBadgeStyle(emp?.role),
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                        }}
+                        style={{ ...roleBadgeStyle(emp?.role), fontSize: '0.72rem', fontWeight: 600 }}
                       >
                         {roleLabel(emp?.role)}
                       </span>
@@ -459,23 +397,9 @@ export default function Employees() {
                           onClick={() => handleEditClick(emp)}
                           title={`Edit ${emp?.name || ''}`}
                           aria-label={`Edit ${emp?.name || ''}`}
-                          style={{
-                            width: 32,
-                            height: 32,
-                            padding: 0,
-                            borderRadius: 6,
-                            borderColor: 'var(--clr-blue)',
-                            color: 'var(--clr-blue)',
-                          }}
+                          style={{ width: 32, height: 32, padding: 0, borderRadius: 6, borderColor: 'var(--clr-blue)', color: 'var(--clr-blue)' }}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="14"
-                            height="14"
-                            fill="currentColor"
-                            viewBox="0 0 16 16"
-                            aria-hidden="true"
-                          >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                             <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                           </svg>
                         </button>
@@ -487,21 +411,9 @@ export default function Employees() {
                           onClick={() => setDeleteEmp(emp)}
                           title={`Delete ${emp?.name || ''}`}
                           aria-label={`Delete ${emp?.name || ''}`}
-                          style={{
-                            width: 32,
-                            height: 32,
-                            padding: 0,
-                            borderRadius: 6,
-                          }}
+                          style={{ width: 32, height: 32, padding: 0, borderRadius: 6 }}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="14"
-                            height="14"
-                            fill="currentColor"
-                            viewBox="0 0 16 16"
-                            aria-hidden="true"
-                          >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                             <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
                             <path fillRule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
                           </svg>
@@ -514,7 +426,7 @@ export default function Employees() {
             </table>
           </div>
 
-          {/* Bootstrap 5 Pagination */}
+          {/* Pagination */}
           <Pagination
             page={page}
             totalPages={totalPages}
@@ -529,13 +441,7 @@ export default function Employees() {
       <EmployeeModal
         show={showModal}
         employee={selectedEmployee}
-        onClose={() => {
-          setShowModal(false);
-          setSelectedEmployee(null);
-        }}
-        onSuccess={() => {
-          fetchEmployees();
-        }}
+        onClose={() => { setShowModal(false); setSelectedEmployee(null); }}
       />
 
       {/* Delete Confirmation Modal */}

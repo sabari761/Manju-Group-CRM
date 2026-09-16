@@ -61,7 +61,7 @@ export default function Pagination({
   const to   = Math.min(page * limit, total);
 
   return (
-    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2 mt-3 text-center text-sm-start">
       {/* Record count label — always visible */}
       <span style={{ fontSize: '0.82rem', color: 'var(--clr-muted)' }}>
         Showing <strong>{from}</strong>–<strong>{to}</strong> of{' '}
@@ -70,7 +70,7 @@ export default function Pagination({
 
       {/* Bootstrap 5 pagination nav — only when more than 1 page */}
       {totalPages > 1 && (
-        <nav aria-label="Page navigation">
+        <nav aria-label="Page navigation" className="overflow-auto max-w-100">
           <ul className="pagination pagination-sm mb-0">
             {/* Previous */}
             <li className={`page-item${page === 1 ? ' disabled' : ''}`}>

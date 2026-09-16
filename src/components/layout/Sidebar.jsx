@@ -60,7 +60,7 @@ const NAV_ITEMS = [
   },
 ];
 
-export default function Sidebar({ open, onClose }) {
+export default function Sidebar({ open, collapsed, onClose, onToggleDesktop }) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -73,6 +73,12 @@ export default function Sidebar({ open, onClose }) {
     isAdmin ? true : item.roles.includes('sales_employee')
   );
 
+  const userName = user?.name || user?.email || 'User';
+  const userInitial = userName.charAt(0).toUpperCase();
+
+  // On mobile or when drawer is open, always display full sidebar content
+  const isMini = collapsed && !open;
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -82,27 +88,73 @@ export default function Sidebar({ open, onClose }) {
         aria-hidden="true"
       />
 
-      <nav className={`sidebar${open ? ' sidebar-open' : ''}`} aria-label="Main navigation">
-        {/* Brand */}
+      <aside
+        className={`sidebar${open ? ' sidebar-open' : ''}${isMini ? ' sidebar-collapsed' : ''}`}
+        aria-label="Main navigation"
+      >
+        {/* Brand Header */}
         <div className="sidebar-brand">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="sidebar-brand-inner">
             <img
               src="/crm-logo.png"
               alt="CRM Platform"
-              style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
+              className="sidebar-brand-img"
             />
-            <div>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem', lineHeight: 1.1 }}>
-                CRM Platform
+            {!isMini && (
+              <div className="sidebar-brand-text">
+                <div className="sidebar-brand-title">CRM Platform</div>
+                <div className="sidebar-brand-subtitle">Real Estate Management</div>
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.68rem', fontWeight: 500, lineHeight: 1.2 }}>
-                Real Estate Management
-              </div>
-            </div>
+            )}
           </div>
+
+          {/* Desktop collapse toggle button */}
+          <button
+            type="button"
+            className="sidebar-collapse-btn d-none d-lg-flex"
+            onClick={onToggleDesktop}
+            title={isMini ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={isMini ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              style={{
+                transform: isMini ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.25s ease',
+              }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          {/* Mobile close button */}
+          <button
+            type="button"
+            className="sidebar-close-btn d-lg-none"
+            onClick={onClose}
+            aria-label="Close sidebar"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Nav Links */}
+        {/* Navigation Links */}
         <div className="sidebar-nav">
           {visibleItems.map((item) => (
             <NavLink
@@ -110,46 +162,74 @@ export default function Sidebar({ open, onClose }) {
               to={item.to}
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
               onClick={onClose}
+              title={isMini ? item.label : undefined}
             >
-              {item.icon}
-              <span>{item.label}</span>
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-text">{item.label}</span>
             </NavLink>
           ))}
         </div>
 
-        {/* Footer: user info + logout */}
+        {/* Sidebar Footer */}
         <div className="sidebar-footer">
-          <div className="mb-2" style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>
-            Signed in as
-          </div>
-          <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>
-            {user?.name || user?.email || 'User'}
-          </div>
-          <div
-            className="badge mt-1"
-            style={{
-              backgroundColor: isAdmin ? 'var(--clr-orange)' : 'rgba(0,174,239,0.25)',
-              color: isAdmin ? '#fff' : 'var(--clr-cyan)',
-              fontSize: '0.7rem',
-            }}
-          >
-            {isAdmin ? 'Admin' : 'Sales Employee'}
-          </div>
-          <button
-            className="btn btn-sm w-100 mt-3"
-            onClick={handleLogout}
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.8)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              fontSize: '0.8rem',
-            }}
-            aria-label="Logout"
-          >
-            Logout
-          </button>
+          {!isMini ? (
+            <div className="sidebar-footer-expanded">
+              <div className="user-label">Signed in as</div>
+              <div className="user-name text-truncate" title={userName}>
+                {userName}
+              </div>
+              <div
+                className="badge mt-1"
+                style={{
+                  backgroundColor: isAdmin ? 'var(--clr-orange)' : 'rgba(0,174,239,0.25)',
+                  color: isAdmin ? '#fff' : 'var(--clr-cyan)',
+                  fontSize: '0.7rem',
+                }}
+              >
+                {isAdmin ? 'Admin' : 'Sales Employee'}
+              </div>
+              <button
+                className="btn btn-sm w-100 mt-3 logout-btn"
+                onClick={handleLogout}
+                aria-label="Logout"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="sidebar-footer-collapsed">
+              <div
+                className="user-avatar"
+                title={`${userName} (${isAdmin ? 'Admin' : 'Sales Employee'})`}
+              >
+                {userInitial}
+              </div>
+              <button
+                className="btn-icon-logout mt-2"
+                onClick={handleLogout}
+                title="Logout"
+                aria-label="Logout"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
-      </nav>
+      </aside>
     </>
   );
 }

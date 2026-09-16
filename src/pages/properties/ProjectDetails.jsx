@@ -1,18 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
-import { toast } from 'react-toastify';
+import { useProject } from '../../hooks/useProperties';
 import {
-  getProject,
-  getBuildings,
-  createBuilding,
-  updateBuilding,
-  deleteBuilding,
-  getUnits,
-  createUnit,
-  updateUnit,
-  deleteUnit,
-} from '../../services/propertyService';
+  useBuildings,
+  useCreateBuilding,
+  useUpdateBuilding,
+  useDeleteBuilding,
+} from '../../hooks/useBuildings';
+import {
+  useUnits,
+  useCreateUnit,
+  useUpdateUnit,
+  useDeleteUnit,
+} from '../../hooks/useUnits';
 import { formatPrice } from '../../utils/formatters';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorState from '../../components/common/ErrorState';
@@ -52,46 +53,29 @@ function Modal({ show, title, onClose, children }) {
 }
 
 // ─── Add / Edit Building Form ─────────────────────────────────────────────────
-function BuildingForm({ projectId, building, onClose, onSuccess }) {
+function BuildingForm({ projectId, building, onClose }) {
   const isEdit = Boolean(building);
-  const [submitting, setSubmitting] = useState(false);
+  const createBuilding = useCreateBuilding(projectId);
+  const updateBuilding = useUpdateBuilding(projectId);
+  const submitting = createBuilding.isPending || updateBuilding.isPending;
+
   const {
     control,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm({
-    defaultValues: { name: '' },
-  });
+  } = useForm({ defaultValues: { name: '' } });
 
-  useEffect(() => {
-    if (building) {
-      reset({ name: building?.name || '' });
-    } else {
-      reset({ name: '' });
-    }
+  React.useEffect(() => {
+    reset({ name: building?.name || '' });
   }, [building, reset]);
 
-  const onSubmit = async (data) => {
-    setSubmitting(true);
-    try {
-      if (isEdit) {
-        const id = building?._id || building?.id;
-        await updateBuilding(id, data);
-        toast.success('Building updated successfully.');
-      } else {
-        await createBuilding(projectId, data);
-        toast.success('Building added successfully.');
-      }
-      reset();
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || `Failed to ${isEdit ? 'update' : 'add'} building.`
-      );
-    } finally {
-      setSubmitting(false);
+  const onSubmit = (data) => {
+    if (isEdit) {
+      const id = building?._id || building?.id;
+      updateBuilding.mutate({ id, data }, { onSuccess: () => { reset(); onClose(); } });
+    } else {
+      createBuilding.mutate(data, { onSuccess: () => { reset(); onClose(); } });
     }
   };
 
@@ -119,30 +103,13 @@ function BuildingForm({ projectId, building, onClose, onSuccess }) {
         {errors.name && <div className="invalid-feedback">{errors.name.message}</div>}
       </div>
       <div className="d-flex justify-content-end gap-2">
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          onClick={onClose}
-          disabled={submitting}
-        >
+        <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={submitting}>
           Cancel
         </button>
-        <button
-          type="submit"
-          id="confirm-building-btn"
-          className="btn btn-navy"
-          disabled={submitting}
-        >
+        <button type="submit" id="confirm-building-btn" className="btn btn-navy" disabled={submitting}>
           {submitting ? (
-            <>
-              <span className="spinner-border spinner-border-sm me-1" />
-              Saving...
-            </>
-          ) : isEdit ? (
-            'Update Building'
-          ) : (
-            'Add Building'
-          )}
+            <><span className="spinner-border spinner-border-sm me-1" />Saving...</>
+          ) : isEdit ? 'Update Building' : 'Add Building'}
         </button>
       </div>
     </form>
@@ -150,19 +117,20 @@ function BuildingForm({ projectId, building, onClose, onSuccess }) {
 }
 
 // ─── Add / Edit Unit Form ─────────────────────────────────────────────────────
-function UnitForm({ buildingId, unit, onClose, onSuccess }) {
+function UnitForm({ buildingId, unit, onClose }) {
   const isEdit = Boolean(unit);
-  const [submitting, setSubmitting] = useState(false);
+  const createUnit = useCreateUnit(buildingId);
+  const updateUnit = useUpdateUnit(buildingId);
+  const submitting = createUnit.isPending || updateUnit.isPending;
+
   const {
     control,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm({
-    defaultValues: { unitNumber: '', type: '2BHK', price: '', status: 'AVAILABLE' },
-  });
+  } = useForm({ defaultValues: { unitNumber: '', type: '2BHK', price: '', status: 'AVAILABLE' } });
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (unit) {
       reset({
         unitNumber: unit?.unitNumber || unit?.number || '',
@@ -175,25 +143,13 @@ function UnitForm({ buildingId, unit, onClose, onSuccess }) {
     }
   }, [unit, reset]);
 
-  const onSubmit = async (data) => {
-    setSubmitting(true);
-    try {
-      const payload = { ...data, price: Number(data.price) };
-      if (isEdit) {
-        const id = unit?._id || unit?.id;
-        await updateUnit(id, payload);
-        toast.success('Unit updated successfully.');
-      } else {
-        await createUnit(buildingId, payload);
-        toast.success('Unit added successfully.');
-      }
-      reset();
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || `Failed to ${isEdit ? 'update' : 'add'} unit.`);
-    } finally {
-      setSubmitting(false);
+  const onSubmit = (data) => {
+    const payload = { ...data, price: Number(data.price) };
+    if (isEdit) {
+      const id = unit?._id || unit?.id;
+      updateUnit.mutate({ id, data: payload }, { onSuccess: () => { reset(); onClose(); } });
+    } else {
+      createUnit.mutate(payload, { onSuccess: () => { reset(); onClose(); } });
     }
   };
 
@@ -231,16 +187,8 @@ function UnitForm({ buildingId, unit, onClose, onSuccess }) {
             control={control}
             rules={{ required: 'Type is required.' }}
             render={({ field }) => (
-              <select
-                {...field}
-                id="unit-type"
-                className={`form-select${errors.type ? ' is-invalid' : ''}`}
-              >
-                {UNIT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+              <select {...field} id="unit-type" className={`form-select${errors.type ? ' is-invalid' : ''}`}>
+                {UNIT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
           />
@@ -270,9 +218,7 @@ function UnitForm({ buildingId, unit, onClose, onSuccess }) {
         </div>
 
         <div className="col-sm-6">
-          <label htmlFor="unit-status" className="form-label">
-            Status
-          </label>
+          <label htmlFor="unit-status" className="form-label">Status</label>
           <Controller
             name="status"
             control={control}
@@ -287,30 +233,13 @@ function UnitForm({ buildingId, unit, onClose, onSuccess }) {
       </div>
 
       <div className="d-flex justify-content-end gap-2 mt-4">
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          onClick={onClose}
-          disabled={submitting}
-        >
+        <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={submitting}>
           Cancel
         </button>
-        <button
-          type="submit"
-          id="confirm-unit-btn"
-          className="btn btn-navy"
-          disabled={submitting}
-        >
+        <button type="submit" id="confirm-unit-btn" className="btn btn-navy" disabled={submitting}>
           {submitting ? (
-            <>
-              <span className="spinner-border spinner-border-sm me-1" />
-              Saving...
-            </>
-          ) : isEdit ? (
-            'Update Unit'
-          ) : (
-            'Add Unit'
-          )}
+            <><span className="spinner-border spinner-border-sm me-1" />Saving...</>
+          ) : isEdit ? 'Update Unit' : 'Add Unit'}
         </button>
       </div>
     </form>
@@ -323,125 +252,77 @@ export default function ProjectDetails() {
   const projectId = params?.projectId || params?.id;
   const navigate = useNavigate();
 
-  const [project, setProject] = useState(null);
-  const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState(null);
-  const [units, setUnits] = useState([]);
-
-  const [loadingProject, setLoadingProject] = useState(true);
-  const [loadingBuildings, setLoadingBuildings] = useState(false);
-  const [loadingUnits, setLoadingUnits] = useState(false);
-  const [errorProject, setErrorProject] = useState(null);
 
   // Building modal & delete states
-  const [showAddBuilding, setShowAddBuilding] = useState(false);
-  const [editBuilding, setEditBuilding] = useState(null);
+  const [showAddBuilding, setShowAddBuilding]     = useState(false);
+  const [editBuilding, setEditBuilding]           = useState(null);
   const [deleteBuildingItem, setDeleteBuildingItem] = useState(null);
-  const [deleteBuildingLoading, setDeleteBuildingLoading] = useState(false);
 
   // Unit modal & delete states
   const [showAddUnit, setShowAddUnit] = useState(false);
-  const [editUnit, setEditUnit] = useState(null);
+  const [editUnit, setEditUnit]       = useState(null);
   const [deleteUnitItem, setDeleteUnitItem] = useState(null);
-  const [deleteUnitLoading, setDeleteUnitLoading] = useState(false);
 
-  // ── Fetch project ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!projectId) return;
-    setLoadingProject(true);
-    setErrorProject(null);
-    getProject(projectId)
-      .then((r) => setProject(r.data?.data || r.data?.project || r.data))
-      .catch(() => setErrorProject('Unable to load project details.'))
-      .finally(() => setLoadingProject(false));
-  }, [projectId]);
+  // ── Queries ───────────────────────────────────────────────────────────────────
+  const {
+    data: project,
+    isLoading: loadingProject,
+    isError: errorProject,
+    refetch: refetchProject,
+  } = useProject(projectId);
 
-  // ── Fetch buildings ─────────────────────────────────────────────────────────
-  const fetchBuildings = useCallback(async () => {
-    if (!projectId) return;
-    setLoadingBuildings(true);
-    try {
-      const r = await getBuildings(projectId);
-      const raw = r.data?.data ?? r.data?.buildings ?? r.data;
-      const list = Array.isArray(raw) ? raw : [];
-      setBuildings(list);
-      // Keep existing selection or select first
-      setSelectedBuilding((prev) => {
-        if (!prev) return list[0] ?? null;
-        const exists = list.find((b) => (b._id || b.id) === (prev._id || prev.id));
-        return exists || (list[0] ?? null);
-      });
-    } catch {
-      toast.error('Could not load buildings.');
-    } finally {
-      setLoadingBuildings(false);
-    }
-  }, [projectId]);
+  const {
+    data: buildings = [],
+    isLoading: loadingBuildings,
+  } = useBuildings(projectId);
 
-  useEffect(() => {
-    fetchBuildings();
-  }, [fetchBuildings]);
-
-  // ── Fetch units ─────────────────────────────────────────────────────────────
-  const fetchUnits = useCallback(async (building) => {
-    const buildingId = building?._id || building?.id;
-    if (!buildingId) {
-      setUnits([]);
-      return;
-    }
-    setLoadingUnits(true);
-    try {
-      const r = await getUnits(buildingId);
-      const raw = r.data?.data ?? r.data?.units ?? r.data;
-      setUnits(Array.isArray(raw) ? raw : []);
-    } catch {
-      toast.error('Could not load units.');
-    } finally {
-      setLoadingUnits(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUnits(selectedBuilding);
-  }, [selectedBuilding, fetchUnits]);
-
-  // ── Delete Building ─────────────────────────────────────────────────────────
-  const handleDeleteBuildingConfirm = async () => {
-    if (!deleteBuildingItem) return;
-    setDeleteBuildingLoading(true);
-    try {
-      const id = deleteBuildingItem?._id || deleteBuildingItem?.id;
-      await deleteBuilding(id);
-      toast.success('Building deleted successfully.');
-      setDeleteBuildingItem(null);
+  // Keep selected building in sync when buildings list changes
+  React.useEffect(() => {
+    if (buildings.length > 0 && !selectedBuilding) {
+      setSelectedBuilding(buildings[0]);
+    } else if (buildings.length > 0 && selectedBuilding) {
+      const exists = buildings.find(
+        (b) => (b._id || b.id) === (selectedBuilding._id || selectedBuilding.id)
+      );
+      if (!exists) setSelectedBuilding(buildings[0]);
+    } else if (buildings.length === 0) {
       setSelectedBuilding(null);
-      fetchBuildings();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to delete building.');
-    } finally {
-      setDeleteBuildingLoading(false);
     }
+  }, [buildings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentBuildingId = selectedBuilding?._id || selectedBuilding?.id;
+
+  const {
+    data: units = [],
+    isLoading: loadingUnits,
+  } = useUnits(currentBuildingId);
+
+  // ── Delete mutations ──────────────────────────────────────────────────────────
+  const deleteBuilding = useDeleteBuilding(projectId);
+  const deleteUnit     = useDeleteUnit(currentBuildingId);
+
+  const handleDeleteBuildingConfirm = () => {
+    if (!deleteBuildingItem) return;
+    const id = deleteBuildingItem?._id || deleteBuildingItem?.id;
+    deleteBuilding.mutate(id, {
+      onSuccess: () => {
+        setDeleteBuildingItem(null);
+        setSelectedBuilding(null);
+      },
+    });
   };
 
-  // ── Delete Unit ─────────────────────────────────────────────────────────────
-  const handleDeleteUnitConfirm = async () => {
+  const handleDeleteUnitConfirm = () => {
     if (!deleteUnitItem) return;
-    setDeleteUnitLoading(true);
-    try {
-      const id = deleteUnitItem?._id || deleteUnitItem?.id;
-      await deleteUnit(id);
-      toast.success('Unit deleted successfully.');
-      setDeleteUnitItem(null);
-      fetchUnits(selectedBuilding);
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to delete unit.');
-    } finally {
-      setDeleteUnitLoading(false);
-    }
+    const id = deleteUnitItem?._id || deleteUnitItem?.id;
+    deleteUnit.mutate(id, {
+      onSuccess: () => setDeleteUnitItem(null),
+    });
   };
 
   if (loadingProject) return <LoadingSpinner text="Loading project..." />;
-  if (errorProject) return <ErrorState message={errorProject} onRetry={() => window.location.reload()} />;
+  if (errorProject)   return <ErrorState message="Unable to load project details." onRetry={refetchProject} />;
 
   const availableCount = units?.filter(
     (u) => u?.status === 'AVAILABLE' || u?.status === 'available'
@@ -535,14 +416,7 @@ export default function ProjectDetails() {
                   aria-label={`Edit ${selectedBuilding?.name}`}
                   style={{ width: 28, height: 28, color: 'var(--clr-blue)' }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="13"
-                    height="13"
-                    fill="currentColor"
-                    viewBox="0 0 16 16"
-                    aria-hidden="true"
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                     <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z" />
                   </svg>
                 </button>
@@ -556,19 +430,9 @@ export default function ProjectDetails() {
                   aria-label={`Delete ${selectedBuilding?.name}`}
                   style={{ width: 28, height: 28 }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="13"
-                    height="13"
-                    fill="currentColor"
-                    viewBox="0 0 16 16"
-                    aria-hidden="true"
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                     <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
-                    <path
-                      fillRule="evenodd"
-                      d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
-                    />
+                    <path fillRule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z" />
                   </svg>
                 </button>
 
@@ -606,21 +470,13 @@ export default function ProjectDetails() {
           ) : (
             <>
               {/* Summary row */}
-              <div
-                className="px-4 py-2 border-bottom d-flex gap-3"
-                style={{ fontSize: '0.8rem', color: 'var(--clr-muted)' }}
-              >
-                <span>
-                  <strong style={{ color: 'var(--clr-navy)' }}>{units?.length}</strong> Total
-                </span>
-                <span>
-                  <strong style={{ color: '#065f46' }}>{availableCount}</strong> Available
-                </span>
+              <div className="px-4 py-2 border-bottom d-flex gap-3" style={{ fontSize: '0.8rem', color: 'var(--clr-muted)' }}>
+                <span><strong style={{ color: 'var(--clr-navy)' }}>{units?.length}</strong> Total</span>
+                <span><strong style={{ color: '#065f46' }}>{availableCount}</strong> Available</span>
                 <span>
                   <strong style={{ color: '#991b1b' }}>
                     {Math.max((units?.length ?? 0) - availableCount, 0)}
-                  </strong>{' '}
-                  Booked
+                  </strong>{' '}Booked
                 </span>
               </div>
 
@@ -639,34 +495,25 @@ export default function ProjectDetails() {
                   <tbody>
                     {units?.map((unit, idx) => {
                       const uid = unit?._id || unit?.id || idx;
-                      const isAvail =
-                        unit?.status === 'AVAILABLE' || unit?.status === 'available';
+                      const isAvail = unit?.status === 'AVAILABLE' || unit?.status === 'available';
                       return (
                         <tr key={uid}>
-                          <td style={{ color: 'var(--clr-muted)', fontSize: '0.82rem' }}>
-                            {idx + 1}
-                          </td>
+                          <td style={{ color: 'var(--clr-muted)', fontSize: '0.82rem' }}>{idx + 1}</td>
                           <td className="fw-medium">{unit?.unitNumber || unit?.number || '—'}</td>
                           <td>{unit?.type || '—'}</td>
-                          <td style={{ color: 'var(--clr-navy)', fontWeight: 600 }}>
-                            {formatPrice(unit?.price)}
-                          </td>
+                          <td style={{ color: 'var(--clr-navy)', fontWeight: 600 }}>{formatPrice(unit?.price)}</td>
                           <td>
-                            <span
-                              className="badge"
-                              style={{
-                                backgroundColor: isAvail ? '#d1fae5' : '#fee2e2',
-                                color: isAvail ? '#065f46' : '#991b1b',
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                              }}
-                            >
+                            <span className="badge" style={{
+                              backgroundColor: isAvail ? '#d1fae5' : '#fee2e2',
+                              color: isAvail ? '#065f46' : '#991b1b',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                            }}>
                               {isAvail ? 'Available' : 'Booked'}
                             </span>
                           </td>
                           <td>
                             <div className="d-flex gap-1 justify-content-center">
-                              {/* Edit Unit */}
                               <button
                                 type="button"
                                 className="btn btn-sm text-primary d-inline-flex align-items-center justify-content-center p-0 border-0"
@@ -675,19 +522,10 @@ export default function ProjectDetails() {
                                 aria-label={`Edit Unit ${unit?.unitNumber || unit?.number || ''}`}
                                 style={{ width: 28, height: 28, color: 'var(--clr-blue)' }}
                               >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="13"
-                                  height="13"
-                                  fill="currentColor"
-                                  viewBox="0 0 16 16"
-                                  aria-hidden="true"
-                                >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                                   <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z" />
                                 </svg>
                               </button>
-
-                              {/* Delete Unit */}
                               <button
                                 type="button"
                                 className="btn btn-sm text-danger d-inline-flex align-items-center justify-content-center p-0 border-0"
@@ -696,19 +534,9 @@ export default function ProjectDetails() {
                                 aria-label={`Delete Unit ${unit?.unitNumber || unit?.number || ''}`}
                                 style={{ width: 28, height: 28 }}
                               >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="13"
-                                  height="13"
-                                  fill="currentColor"
-                                  viewBox="0 0 16 16"
-                                  aria-hidden="true"
-                                >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                                   <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
-                                  />
+                                  <path fillRule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z" />
                                 </svg>
                               </button>
                             </div>
@@ -728,19 +556,12 @@ export default function ProjectDetails() {
       <Modal
         show={showAddBuilding || Boolean(editBuilding)}
         title={editBuilding ? `Edit Building — ${editBuilding?.name}` : 'Add Building'}
-        onClose={() => {
-          setShowAddBuilding(false);
-          setEditBuilding(null);
-        }}
+        onClose={() => { setShowAddBuilding(false); setEditBuilding(null); }}
       >
         <BuildingForm
           projectId={projectId}
           building={editBuilding}
-          onClose={() => {
-            setShowAddBuilding(false);
-            setEditBuilding(null);
-          }}
-          onSuccess={fetchBuildings}
+          onClose={() => { setShowAddBuilding(false); setEditBuilding(null); }}
         />
       </Modal>
 
@@ -758,7 +579,7 @@ export default function ProjectDetails() {
         }
         confirmLabel="Delete"
         confirmVariant="danger"
-        loading={deleteBuildingLoading}
+        loading={deleteBuilding.isPending}
         onConfirm={handleDeleteBuildingConfirm}
         onCancel={() => setDeleteBuildingItem(null)}
       />
@@ -771,19 +592,12 @@ export default function ProjectDetails() {
             ? `Edit Unit — ${editUnit?.unitNumber || editUnit?.number}`
             : `Add Unit — ${selectedBuilding?.name || ''}`
         }
-        onClose={() => {
-          setShowAddUnit(false);
-          setEditUnit(null);
-        }}
+        onClose={() => { setShowAddUnit(false); setEditUnit(null); }}
       >
         <UnitForm
-          buildingId={selectedBuilding?._id || selectedBuilding?.id}
+          buildingId={currentBuildingId}
           unit={editUnit}
-          onClose={() => {
-            setShowAddUnit(false);
-            setEditUnit(null);
-          }}
-          onSuccess={() => fetchUnits(selectedBuilding)}
+          onClose={() => { setShowAddUnit(false); setEditUnit(null); }}
         />
       </Modal>
 
@@ -802,7 +616,7 @@ export default function ProjectDetails() {
         }
         confirmLabel="Delete"
         confirmVariant="danger"
-        loading={deleteUnitLoading}
+        loading={deleteUnit.isPending}
         onConfirm={handleDeleteUnitConfirm}
         onCancel={() => setDeleteUnitItem(null)}
       />

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import { getLeads, createLead, updateLead, deleteLead, getLeadById } from '../../services/leadService';
-import { getEmployees } from '../../services/employeeService';
+import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from '../../hooks/useLeads';
+import { useEmployees } from '../../hooks/useEmployees';
+import { getLeadById } from '../../services/leadService';
 import { toInputDate } from '../../utils/formatters';
 import PageHeader from '../../components/common/PageHeader';
 import SearchInput from '../../components/common/SearchInput';
@@ -13,75 +14,61 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorState from '../../components/common/ErrorState';
 import Pagination from '../../components/common/Pagination';
 
-export default function Leads() {
-  const [leads, setLeads]         = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
+const LIMIT = 10;
 
-  // Filters
+export default function Leads() {
+  // Filters & pagination
   const [search, setSearch]       = useState('');
   const [stageFilter, setStage]   = useState('');
   const [empFilter, setEmpFilter] = useState('');
-
-  // Pagination
   const [page, setPage]           = useState(1);
-  const [total, setTotal]         = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const LIMIT = 10;
 
   // Form modal
   const [showForm, setShowForm]   = useState(false);
   const [editLead, setEditLead]   = useState(null);
-  const [formLoading, setFormLoading] = useState(false);
 
   // Delete modal
   const [deleteLead_, setDeleteLead] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page, limit: LIMIT };
-      if (search)      params.search     = search;
-      if (stageFilter) params.stage      = stageFilter;
-      if (empFilter)   params.assignedTo = empFilter;
+  // ── Queries ──────────────────────────────────────────────────────────────────
+  const filters = {
+    page,
+    limit: LIMIT,
+    ...(search      && { search }),
+    ...(stageFilter && { stage: stageFilter }),
+    ...(empFilter   && { assignedTo: empFilter }),
+  };
 
-      const res = await getLeads(params);
-      // Response: { data: [], total, page, limit, totalPages }
-      const raw = res.data?.data ?? res.data?.leads ?? res.data;
-      setLeads(Array.isArray(raw) ? raw : []);
-      setTotal(res.data?.total ?? 0);
-      setTotalPages(res.data?.totalPages ?? 1);
-    } catch {
-      setError('Unable to load leads.');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, stageFilter, empFilter]);
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+  } = useLeads(filters);
 
-  useEffect(() => { fetchLeads(); }, [fetchLeads]);
+  const leads      = data?.leads      ?? [];
+  const total      = data?.total      ?? 0;
+  const totalPages = data?.totalPages ?? 1;
 
-  // Reset page on filter/search change
+  // Employees dropdown (no pagination needed — load all)
+  const { data: empData } = useEmployees({ limit: 200 });
+  const employees = empData?.employees ?? [];
+
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+  const createLead = useCreateLead();
+  const updateLead = useUpdateLead();
+  const deleteLead = useDeleteLead();
+
+  // ── Filter helpers ────────────────────────────────────────────────────────────
   const handleSearch = (val) => { setSearch(val); setPage(1); };
   const handleStage  = (val) => { setStage(val);  setPage(1); };
   const handleEmp    = (val) => { setEmpFilter(val); setPage(1); };
 
-  useEffect(() => {
-    getEmployees()
-      .then((r) => {
-        const raw = r.data?.data ?? r.data?.employees ?? r.data;
-        setEmployees(Array.isArray(raw) ? raw : []);
-      })
-      .catch(() => {});
-  }, []);
-
-  // ---- Handlers ----
+  // ── Form handlers ─────────────────────────────────────────────────────────────
   const openCreate = () => { setEditLead(null); setShowForm(true); };
-  const openEdit   = async (lead) => {
+
+  const openEdit = async (lead) => {
     const id = lead._id || lead.id;
-    // Set immediate row data so modal opens instantly
     const assignedToId =
       lead.assignedTo?._id ||
       (typeof lead.assignedTo === 'string' ? lead.assignedTo : '') ||
@@ -95,7 +82,7 @@ export default function Leads() {
     });
     setShowForm(true);
 
-    // Call getLeadById to ensure fresh/complete lead data
+    // Fetch fresh data to fill form
     try {
       const res = await getLeadById(id);
       const fresh = res.data?.data ?? res.data?.lead ?? res.data;
@@ -113,47 +100,35 @@ export default function Leads() {
         });
       }
     } catch {
-      // Row data fallback already in place
-    }
-  };
-  const closeForm  = () => { setShowForm(false); setEditLead(null); };
-
-  const handleFormSubmit = async (data) => {
-    setFormLoading(true);
-    try {
-      const payload = { ...data };
-      if (!payload.assignedTo) delete payload.assignedTo;
-      if (!payload.followUpDate) delete payload.followUpDate;
-
-      if (editLead) {
-        await updateLead(editLead.id || editLead._id, payload);
-        toast.success('Lead updated successfully.');
-      } else {
-        await createLead(payload);
-        toast.success('Lead created successfully.');
-      }
-      closeForm();
-      fetchLeads();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save lead.');
-    } finally {
-      setFormLoading(false);
+      // Row data already set as fallback
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    setDeleteLoading(true);
-    try {
-      await deleteLead(deleteLead_._id || deleteLead_.id);
-      toast.success('Lead deleted successfully.');
-      setDeleteLead(null);
-      fetchLeads();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete lead.');
-    } finally {
-      setDeleteLoading(false);
+  const closeForm = () => { setShowForm(false); setEditLead(null); };
+
+  const handleFormSubmit = (data) => {
+    const payload = { ...data };
+    if (!payload.assignedTo) delete payload.assignedTo;
+    if (!payload.followUpDate) delete payload.followUpDate;
+
+    if (editLead) {
+      updateLead.mutate(
+        { id: editLead.id || editLead._id, data: payload },
+        { onSuccess: closeForm }
+      );
+    } else {
+      createLead.mutate(payload, { onSuccess: closeForm });
     }
   };
+
+  const handleDeleteConfirm = () => {
+    deleteLead.mutate(deleteLead_._id || deleteLead_.id, {
+      onSuccess: () => setDeleteLead(null),
+    });
+  };
+
+  const formLoading   = createLead.isPending || updateLead.isPending;
+  const deleteLoading = deleteLead.isPending;
 
   return (
     <div>
@@ -181,15 +156,15 @@ export default function Leads() {
       </div>
 
       {/* Content */}
-      {loading ? (
+      {isLoading ? (
         <LoadingSpinner text="Loading leads..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={fetchLeads} />
+      ) : isError ? (
+        <ErrorState message="Unable to load leads." onRetry={refetch} />
       ) : (
         <>
           <LeadTable
             leads={leads}
-            loading={loading}
+            loading={isLoading}
             onEdit={openEdit}
             onDelete={(lead) => setDeleteLead(lead)}
           />

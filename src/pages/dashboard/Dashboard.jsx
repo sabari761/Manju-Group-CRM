@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { getDashboard } from '../../services/dashboardService';
-import { getLeads } from '../../services/leadService';
-import { getBookings } from '../../services/bookingService';
+import { useDashboard, useFollowUpLeads, useRecentBookings } from '../../hooks/useDashboard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorState from '../../components/common/ErrorState';
 import LeadStageBadge from '../../components/leads/LeadStageBadge';
@@ -31,64 +29,29 @@ const STAGE_COLORS = {
 };
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
-  const [followUps, setFollowUps] = useState([]);
-  const [recentBookings, setRecentBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const {
+    data: dashboardData,
+    isLoading: loadingDashboard,
+    isError: errorDashboard,
+    refetch: refetchDashboard,
+  } = useDashboard();
 
-  const fetchDashboard = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await getDashboard();
-      // Safe fallback extraction for various response shapes
-      const raw = res?.data?.data ?? res?.data ?? {};
-      setData(raw);
+  const {
+    data: followUps = [],
+    isLoading: loadingFollowUps,
+  } = useFollowUpLeads(dashboardData);
 
-      // Follow-ups: use raw if present, otherwise fetch from leads API as fallback
-      if (Array.isArray(raw.upcomingFollowUps) && raw.upcomingFollowUps.length > 0) {
-        setFollowUps(raw.upcomingFollowUps);
-      } else {
-        try {
-          const leadsRes = await getLeads({ page: 1, limit: 10 });
-          const leadsList = leadsRes?.data?.data ?? leadsRes?.data?.leads ?? leadsRes?.data ?? [];
-          const safeLeads = Array.isArray(leadsList) ? leadsList : [];
-          // Prioritize leads with followUpDate
-          const withDate = safeLeads.filter((l) => l.followUpDate);
-          setFollowUps(withDate.length > 0 ? withDate.slice(0, 5) : safeLeads.slice(0, 5));
-        } catch {
-          setFollowUps([]);
-        }
-      }
+  const {
+    data: recentBookings = [],
+    isLoading: loadingBookings,
+  } = useRecentBookings(dashboardData);
 
-      // Recent Bookings: use raw if present, otherwise fetch from bookings API as fallback
-      if (Array.isArray(raw.recentBookings) && raw.recentBookings.length > 0) {
-        setRecentBookings(raw.recentBookings);
-      } else {
-        try {
-          const bookingsRes = await getBookings({ page: 1, limit: 5 });
-          const bookingsList = bookingsRes?.data?.data ?? bookingsRes?.data?.bookings ?? bookingsRes?.data ?? [];
-          setRecentBookings(Array.isArray(bookingsList) ? bookingsList.slice(0, 5) : []);
-        } catch {
-          setRecentBookings([]);
-        }
-      }
-    } catch {
-      setError('Unable to load dashboard data.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading = loadingDashboard || loadingFollowUps || loadingBookings;
 
-  useEffect(() => {
-    fetchDashboard();
-  }, []);
+  if (loadingDashboard) return <LoadingSpinner text="Loading dashboard..." />;
+  if (errorDashboard) return <ErrorState message="Unable to load dashboard data." onRetry={refetchDashboard} />;
 
-  if (loading) return <LoadingSpinner text="Loading dashboard..." />;
-  if (error) return <ErrorState message={error} onRetry={fetchDashboard} />;
-
-  const raw = data || {};
+  const raw = dashboardData || {};
 
   // Safe fallback counts extraction
   const summary = {
@@ -126,15 +89,15 @@ export default function Dashboard() {
       </div>
 
       {/* ---- Summary Cards ---- */}
-      <div className="row g-3 mb-4">
+      <div className="row g-2 g-sm-3 mb-4">
         {[
           { label: 'Total Leads',      value: summary.totalLeads,      color: 'var(--clr-navy)' },
           { label: 'New Leads',        value: summary.newLeads,        color: '#0369a1' },
           { label: 'Interested',       value: summary.interestedLeads, color: '#065f46' },
           { label: 'Follow-ups Today', value: summary.followUpsToday,  color: 'var(--clr-orange)' },
           { label: 'Total Bookings',   value: summary.totalBookings,   color: '#166534' },
-        ].map((card) => (
-          <div className="col-6 col-md-4 col-lg" key={card.label}>
+        ].map((card, idx) => (
+          <div className={`col-6 col-sm-6 col-md-4 col-xl ${idx === 4 ? 'col-12 col-sm-6 col-md-4 col-xl' : ''}`} key={card.label}>
             <div className="stat-card">
               <div className="stat-label">{card.label}</div>
               <div className="stat-value" style={{ color: card.color }}>{card.value}</div>
@@ -145,7 +108,7 @@ export default function Dashboard() {
 
       <div className="row g-3 mb-4">
         {/* Lead Pipeline */}
-        <div className="col-lg-5">
+        <div className="col-12 col-lg-5">
           <div className="card h-100 border-0 shadow-sm" style={{ borderRadius: 8 }}>
             <div className="card-header bg-white border-bottom py-3 px-4">
               <h6 className="mb-0 fw-semibold" style={{ color: 'var(--clr-navy)' }}>Lead Pipeline</h6>
@@ -176,7 +139,7 @@ export default function Dashboard() {
         </div>
 
         {/* Upcoming Follow-ups */}
-        <div className="col-lg-7">
+        <div className="col-12 col-lg-7">
           <div className="card h-100 border-0 shadow-sm" style={{ borderRadius: 8 }}>
             <div className="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
               <h6 className="mb-0 fw-semibold" style={{ color: 'var(--clr-navy)' }}>Upcoming Follow-ups</h6>
@@ -185,7 +148,9 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="card-body p-0">
-              {followUps.length === 0 ? (
+              {loadingFollowUps ? (
+                <div className="p-3"><LoadingSpinner text="Loading follow-ups..." /></div>
+              ) : followUps.length === 0 ? (
                 <p className="text-center py-4" style={{ color: 'var(--clr-muted)', fontSize: '0.875rem' }}>
                   No upcoming follow-ups.
                 </p>
@@ -241,7 +206,9 @@ export default function Dashboard() {
           </Link>
         </div>
         <div className="card-body p-0">
-          {recentBookings.length === 0 ? (
+          {loadingBookings ? (
+            <div className="p-3"><LoadingSpinner text="Loading bookings..." /></div>
+          ) : recentBookings.length === 0 ? (
             <p className="text-center py-4" style={{ color: 'var(--clr-muted)', fontSize: '0.875rem' }}>
               No recent bookings.
             </p>

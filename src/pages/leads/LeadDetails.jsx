@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { getLeadById, updateLead } from '../../services/leadService';
-import { getEmployees } from '../../services/employeeService';
+import { useLeadById, useUpdateLead } from '../../hooks/useLeads';
+import { useEmployees } from '../../hooks/useEmployees';
 import { formatDate, toInputDate } from '../../utils/formatters';
 import LeadStageBadge from '../../components/leads/LeadStageBadge';
 import LeadNotes from '../../components/leads/LeadNotes';
@@ -14,49 +13,37 @@ export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [lead, setLead]           = useState(null);
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
-  const [showEdit, setShowEdit]   = useState(false);
-  const [editLoading, setEditLoading] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
-  const fetchLead = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const [leadRes, empRes] = await Promise.all([
-        getLeadById(id),
-        getEmployees(),
-      ]);
-      setLead(leadRes.data?.lead || leadRes.data?.data || leadRes.data);
-      const empRaw = empRes.data?.data ?? empRes.data?.employees ?? empRes.data;
-      setEmployees(Array.isArray(empRaw) ? empRaw : []);
-    } catch {
-      setError('Unable to load lead details.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  // ── Queries ───────────────────────────────────────────────────────────────────
+  const {
+    data: lead,
+    isLoading,
+    isError,
+    refetch,
+  } = useLeadById(id);
 
-  useEffect(() => { fetchLead(); }, [fetchLead]);
+  const { data: empData } = useEmployees({ limit: 200 });
+  const employees = empData?.employees ?? [];
 
-  const handleEditSubmit = async (data) => {
-    setEditLoading(true);
-    try {
-      await updateLead(id, data);
-      toast.success('Lead updated successfully.');
-      setShowEdit(false);
-      fetchLead();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update lead.');
-    } finally {
-      setEditLoading(false);
-    }
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+  const updateLead = useUpdateLead();
+
+  const handleEditSubmit = (data) => {
+    updateLead.mutate(
+      { id, data },
+      {
+        onSuccess: () => {
+          setShowEdit(false);
+          refetch();
+        },
+      }
+    );
   };
 
-  if (loading) return <LoadingSpinner text="Loading lead details..." />;
-  if (error)   return <ErrorState message={error} onRetry={fetchLead} />;
-  if (!lead)   return <ErrorState message="Lead not found." />;
+  if (isLoading) return <LoadingSpinner text="Loading lead details..." />;
+  if (isError)   return <ErrorState message="Unable to load lead details." onRetry={refetch} />;
+  if (!lead)     return <ErrorState message="Lead not found." />;
 
   return (
     <div>
@@ -90,7 +77,7 @@ export default function LeadDetails() {
                 <InfoRow label="Customer Name" value={lead?.name || lead?.customerName || '—'} />
                 <InfoRow label="Phone"         value={lead?.phone || '—'} />
                 <InfoRow label="Email"         value={lead?.email || '—'} />
-                <div className="col-sm-4">
+                <div className="col-6 col-sm-4">
                   <div style={{ fontSize: '0.75rem', color: 'var(--clr-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Stage
                   </div>
@@ -121,7 +108,7 @@ export default function LeadDetails() {
               <LeadNotes
                 leadId={id}
                 notes={lead?.notes || []}
-                onNoteAdded={fetchLead}
+                onNoteAdded={refetch}
               />
             </div>
           </div>
@@ -180,7 +167,6 @@ export default function LeadDetails() {
                       ...lead,
                       name: lead.name || lead.customerName,
                       followUpDate: toInputDate(lead.followUpDate),
-                      // Extract _id if assignedTo is a populated object
                       assignedTo:
                         lead.assignedTo?._id ||
                         (typeof lead.assignedTo === 'string' ? lead.assignedTo : '') ||
@@ -189,7 +175,7 @@ export default function LeadDetails() {
                     employees={employees}
                     onSubmit={handleEditSubmit}
                     onCancel={() => setShowEdit(false)}
-                    loading={editLoading}
+                    loading={updateLead.isPending}
                     mode="edit"
                   />
                 </div>
@@ -204,7 +190,7 @@ export default function LeadDetails() {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="col-sm-4">
+    <div className="col-6 col-sm-4">
       <div style={{ fontSize: '0.75rem', color: 'var(--clr-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>

@@ -76,15 +76,15 @@ export default function BookingTable({ bookings: bookingsProp, loading, page = 1
                 <td style={{ color: 'var(--clr-muted)', fontSize: '0.82rem' }}>
                   {(page - 1) * limit + idx + 1}
                 </td>
-                <td className="fw-medium">{customer}</td>
-                <td>{getProjectName(b)}</td>
-                <td>{getBuildingName(b)}</td>
-                <td>{getUnitNumber(b)}</td>
-                <td>{getUnitType(b)}</td>
-                <td style={{ color: 'var(--clr-navy)', fontWeight: 600 }}>
+                <td className="fw-medium text-nowrap">{customer}</td>
+                <td className="text-nowrap">{getProjectName(b)}</td>
+                <td className="text-nowrap">{getBuildingName(b)}</td>
+                <td className="text-nowrap">{getUnitNumber(b)}</td>
+                <td className="text-nowrap">{getUnitType(b)}</td>
+                <td style={{ color: 'var(--clr-navy)', fontWeight: 600 }} className="text-nowrap">
                   {formatPrice(getUnitPrice(b))}
                 </td>
-                <td>{formatDate(b?.bookingDate || b?.createdAt)}</td>
+                <td className="text-nowrap">{formatDate(b?.bookingDate || b?.createdAt)}</td>
                 <td>
                   <span
                     className="badge"

@@ -8,7 +8,7 @@ export default function SearchInput({
   style,
 }) {
   return (
-    <div className="input-group" style={{ maxWidth: 360, ...style }}>
+    <div className="input-group w-100" style={{ maxWidth: 360, ...style }}>
       <span
         className="input-group-text bg-white border-end-0"
         style={{ borderColor: 'var(--clr-border)' }}

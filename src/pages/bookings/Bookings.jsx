@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { getBookings, createBooking } from '../../services/bookingService';
+import { useBookings, useCreateBooking } from '../../hooks/useBookings';
 import BookingTable from '../../components/bookings/BookingTable';
 import BookingForm from '../../components/bookings/BookingForm';
 import BookingConfirmModal from '../../components/bookings/BookingConfirmModal';
@@ -11,105 +10,77 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorState from '../../components/common/ErrorState';
 import Pagination from '../../components/common/Pagination';
 
+const LIMIT = 10;
+
 export default function Bookings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const prefillLeadId = searchParams.get('leadId') || '';
+  const prefillLeadId   = searchParams.get('leadId')   || '';
   const prefillLeadName = searchParams.get('leadName') || '';
   const urlSearch = searchParams.get('search') || '';
-  const urlPage = parseInt(searchParams.get('page'), 10) || 1;
+  const urlPage   = parseInt(searchParams.get('page'), 10) || 1;
 
   const [search, setSearch] = useState(urlSearch);
-  const [page, setPage] = useState(urlPage);
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [page, setPage]     = useState(urlPage);
 
-  // Pagination states
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const LIMIT = 10;
-
-  // New Booking form / modal states
-  const [showForm, setShowForm] = useState(!!prefillLeadId);
+  // New Booking form / confirm modal
+  const [showForm, setShowForm]       = useState(!!prefillLeadId);
   const [pendingData, setPendingData] = useState(null); // { formData, summary }
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const fetchBookings = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page, limit: LIMIT };
-      if (search?.trim()) {
-        params.search = search.trim();
-      }
-      const res = await getBookings(params);
-      // Response: { success, data: [], total, page, limit, totalPages }
-      const raw = res.data?.data ?? res.data?.bookings ?? res.data;
-      const list = Array.isArray(raw) ? raw : [];
-      setBookings(list);
-      setTotal(res.data?.total ?? list.length ?? 0);
-      setTotalPages(
-        res.data?.totalPages ?? Math.max(Math.ceil((res.data?.total ?? list.length) / LIMIT), 1)
-      );
-    } catch {
-      setError('Unable to load bookings.');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
+  // ── Queries ───────────────────────────────────────────────────────────────────
+  const filters = {
+    page,
+    limit: LIMIT,
+    ...(search?.trim() && { search: search.trim() }),
+  };
 
-  useEffect(() => {
-    fetchBookings();
-  }, [fetchBookings]);
+  const { data, isLoading, isError, refetch } = useBookings(filters);
 
-  // Handle search and synchronize query parameter in URL
+  const bookings   = data?.bookings   ?? [];
+  const total      = data?.total      ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+  const createBooking = useCreateBooking();
+  const confirmLoading = createBooking.isPending;
+
+  // ── Search / page handlers ────────────────────────────────────────────────────
   const handleSearch = (val) => {
     setSearch(val);
     setPage(1);
     const newParams = {};
-    if (prefillLeadId) newParams.leadId = prefillLeadId;
+    if (prefillLeadId)   newParams.leadId   = prefillLeadId;
     if (prefillLeadName) newParams.leadName = prefillLeadName;
-    if (val?.trim()) newParams.search = val.trim();
+    if (val?.trim())     newParams.search   = val.trim();
     setSearchParams(newParams, { replace: true });
   };
 
-  // Handle page change and synchronize query parameter in URL
   const handlePageChange = (newPage) => {
     setPage(newPage);
     const newParams = {};
-    if (prefillLeadId) newParams.leadId = prefillLeadId;
+    if (prefillLeadId)   newParams.leadId   = prefillLeadId;
     if (prefillLeadName) newParams.leadName = prefillLeadName;
-    if (newPage > 1) newParams.page = newPage;
-    if (search?.trim()) newParams.search = search.trim();
+    if (newPage > 1)     newParams.page     = newPage;
+    if (search?.trim())  newParams.search   = search.trim();
     setSearchParams(newParams, { replace: true });
   };
 
-  // Called when BookingForm is submitted → open confirm modal
+  // Called when BookingForm submits → open confirm modal
   const handleFormSubmit = (formData, summary) => {
     setPendingData({ formData, summary });
   };
 
   // Final booking confirmation
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (!pendingData) return;
-    setConfirmLoading(true);
-    try {
-      await createBooking(pendingData.formData);
-      toast.success('Booking confirmed successfully.');
-      setPendingData(null);
-      setShowForm(false);
-      fetchBookings();
-    } catch (err) {
-      const status = err.response?.status;
-      if (status === 409) {
-        toast.error('This unit has already been booked. Please select another available unit.');
+    createBooking.mutate(pendingData.formData, {
+      onSuccess: () => {
         setPendingData(null);
-      } else {
-        toast.error(err.response?.data?.message || 'Booking failed. Please try again.');
-      }
-    } finally {
-      setConfirmLoading(false);
-    }
+        setShowForm(false);
+      },
+      onError: () => {
+        setPendingData(null);
+      },
+    });
   };
 
   return (
@@ -165,15 +136,15 @@ export default function Bookings() {
         </div>
       ) : (
         <>
-          {loading ? (
+          {isLoading ? (
             <LoadingSpinner text="Loading bookings..." />
-          ) : error ? (
-            <ErrorState message={error} onRetry={fetchBookings} />
+          ) : isError ? (
+            <ErrorState message="Unable to load bookings." onRetry={refetch} />
           ) : (
             <>
               <BookingTable
                 bookings={bookings}
-                loading={loading}
+                loading={isLoading}
                 page={page}
                 limit={LIMIT}
                 search={search}
